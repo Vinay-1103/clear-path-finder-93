@@ -7,14 +7,14 @@ interface AirQualityOverlayProps {
 }
 
 export const AirQualityOverlay: React.FC<AirQualityOverlayProps> = ({ data }) => {
-  // Count AQI by category
-  const aqiCounts = data.reduce((acc, point) => {
+  // Check if data is an array before using reduce
+  const aqiCounts = Array.isArray(data) ? data.reduce((acc, point) => {
     const aqi = point.aqi;
     if (aqi <= 50) acc.good++;
     else if (aqi <= 100) acc.moderate++;
     else acc.poor++;
     return acc;
-  }, { good: 0, moderate: 0, poor: 0 });
+  }, { good: 0, moderate: 0, poor: 0 }) : { good: 0, moderate: 0, poor: 0 };
 
   return (
     <motion.div
@@ -47,7 +47,7 @@ export const AirQualityOverlay: React.FC<AirQualityOverlayProps> = ({ data }) =>
         </div>
       </div>
       
-      {data.length === 0 && (
+      {(!Array.isArray(data) || data.length === 0) && (
         <p className="text-sm text-gray-500 mt-2 italic">No air quality data available for this area.</p>
       )}
     </motion.div>

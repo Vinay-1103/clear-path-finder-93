@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Search, MapPin, X } from 'lucide-react';
 import { SearchBar } from './SearchBar';
+import { toast } from 'sonner';
 
 const Map = () => {
   const mapContainer = useRef<HTMLDivElement>(null);
@@ -19,8 +20,14 @@ const Map = () => {
   const [showMap, setShowMap] = useState(false);
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [selectedLocation, setSelectedLocation] = useState<[number, number] | null>(null);
+  const [mapInitialized, setMapInitialized] = useState(false);
 
   const handleSaveToken = () => {
+    if (!iqairToken.trim()) {
+      toast.error("Please enter a valid IQAir API token");
+      return;
+    }
+    
     localStorage.setItem('iqair_token', iqairToken);
     setShowMap(true);
   };
@@ -38,6 +45,7 @@ const Map = () => {
       setSearchResults(response.data.slice(0, 5));
     } catch (error) {
       console.error('Error searching locations:', error);
+      toast.error("Error searching for locations");
     }
   };
 
@@ -48,6 +56,13 @@ const Map = () => {
     
     if (map.current) {
       map.current.setView([lat, lon], 12);
+      
+      // Clear existing markers first
+      map.current.eachLayer((layer) => {
+        if (layer instanceof L.Marker) {
+          layer.remove();
+        }
+      });
       
       // Add a marker for the selected location
       const marker = L.marker([lat, lon]).addTo(map.current);
@@ -67,50 +82,84 @@ const Map = () => {
       const response = await axios.get(
         `https://api.waqi.info/v2/map/bounds?latlng=${lat-offset},${lon-offset},${lat+offset},${lon+offset}&token=${iqairToken}`
       );
-      setAqiData(response.data.data || []);
+      
+      if (response.data && response.data.data) {
+        setAqiData(response.data.data || []);
+      } else {
+        setAqiData([]);
+        toast.warning("No air quality data available for this location");
+      }
     } catch (error) {
       console.error('Error fetching AQI data for location:', error);
+      toast.error("Failed to load air quality data");
+      setAqiData([]);
     }
   };
 
   useEffect(() => {
-    if (!mapContainer.current || !showMap) return;
+    if (!mapContainer.current || !showMap || mapInitialized) return;
 
     try {
       // Default view of USA
-      map.current = L.map(mapContainer.current).setView([39.8283, -98.5795], 4);
-
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-      }).addTo(map.current);
+      map.current = L.map(mapContainer.current, {
+        center: [39.8283, -98.5795],
+        zoom: 4,
+        layers: [
+          L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+          })
+        ]
+      });
 
       // Add zoom control
       L.control.zoom({ position: 'topright' }).addTo(map.current);
-
+      
+      setMapInitialized(true);
+      
       // Load initial AQI data for USA
       const fetchAQIData = async () => {
         try {
           const response = await axios.get(
             `https://api.waqi.info/v2/map/bounds?latlng=24.396308,-125.000000,49.384358,-66.934570&token=${iqairToken}`
           );
-          setAqiData(response.data.data || []);
+          
+          if (response.data && response.data.data) {
+            setAqiData(response.data.data || []);
+          } else {
+            setAqiData([]);
+            toast.warning("No air quality data available. Please check your API key.");
+          }
         } catch (error) {
           console.error('Error fetching AQI data:', error);
+          toast.error("Failed to load air quality data. Please check your API key.");
+          setAqiData([]);
         }
       };
 
       fetchAQIData();
+      
+      // Force a resize event to ensure the map renders properly
+      setTimeout(() => {
+        if (map.current) {
+          map.current.invalidateSize();
+        }
+      }, 100);
     } catch (error) {
       console.error('Error initializing map:', error);
+      toast.error("Failed to initialize map");
     }
 
     return () => {
-      map.current?.remove();
+      if (map.current) {
+        map.current.remove();
+        map.current = null;
+        setMapInitialized(false);
+      }
     };
-  }, [showMap, iqairToken]);
+  }, [showMap, iqairToken, mapInitialized]);
 
   useEffect(() => {
-    if (!map.current || !aqiData.length) return;
+    if (!map.current || !Array.isArray(aqiData) || aqiData.length === 0) return;
 
     // Clear existing markers
     map.current.eachLayer((layer) => {
@@ -121,16 +170,18 @@ const Map = () => {
 
     // Add AQI data points to the map
     aqiData.forEach((point) => {
-      L.circleMarker([point.lat, point.lon], {
-        radius: 8,
-        fillColor: getAQIColor(point.aqi),
-        color: '#fff',
-        weight: 1,
-        opacity: 1,
-        fillOpacity: 0.8
-      })
-        .addTo(map.current!)
-        .bindPopup(`<b>AQI: ${point.aqi}</b><br>${point.station.name}`);
+      if (point && typeof point.lat === 'number' && typeof point.lon === 'number' && typeof point.aqi === 'number') {
+        L.circleMarker([point.lat, point.lon], {
+          radius: 8,
+          fillColor: getAQIColor(point.aqi),
+          color: '#fff',
+          weight: 1,
+          opacity: 1,
+          fillOpacity: 0.8
+        })
+          .addTo(map.current!)
+          .bindPopup(`<b>AQI: ${point.aqi}</b><br>${point.station?.name || 'Unknown Station'}`);
+      }
     });
   }, [aqiData]);
 

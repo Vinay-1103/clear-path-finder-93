@@ -16,11 +16,12 @@ export const MapContainer = styled.div`
     border-radius: 0;
     overflow: hidden;
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+    z-index: 1;
   }
 
   .leaflet-container {
-    width: 100%;
-    height: 100%;
+    width: 100% !important;
+    height: 100% !important;
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen,
       Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
   }
