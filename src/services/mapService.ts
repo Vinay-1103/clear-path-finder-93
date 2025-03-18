@@ -1,4 +1,3 @@
-
 import axios from 'axios';
 import { toast } from 'sonner';
 
@@ -63,6 +62,37 @@ export const fetchAQIDataForLocation = async (lat: number, lon: number, iqairTok
   } catch (error) {
     console.error('Error fetching AQI data for location:', error);
     toast.error("Failed to load air quality data");
+    return [];
+  }
+};
+
+export const fetchRoute = async (start: { lat: number; lon: number }, end: { lat: number; lon: number }) => {
+  try {
+    const response = await axios.get(
+      `https://router.project-osrm.org/route/v1/driving/${start.lon},${start.lat};${end.lon},${end.lat}?overview=full&geometries=geojson`
+    );
+    return response.data.routes[0].geometry;
+  } catch (error) {
+    console.error('Error fetching route:', error);
+    toast.error("Error fetching route");
+    return null;
+  }
+};
+
+export const getRouteAQI = async (coordinates: number[][], iqairToken: string) => {
+  try {
+    const aqiPromises = coordinates.map(async ([lon, lat]) => {
+      const response = await axios.get(
+        `https://api.waqi.info/feed/geo:${lat};${lon}/?token=${iqairToken}`
+      );
+      return response.data.data.aqi;
+    });
+
+    const aqiValues = await Promise.all(aqiPromises);
+    return aqiValues;
+  } catch (error) {
+    console.error('Error fetching route AQI:', error);
+    toast.error("Error fetching air quality data for route");
     return [];
   }
 };

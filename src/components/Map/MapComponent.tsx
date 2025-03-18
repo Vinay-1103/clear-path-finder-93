@@ -1,4 +1,3 @@
-
 import React, { useRef, useEffect } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -8,22 +7,22 @@ interface MapComponentProps {
   aqiData: any[];
   selectedLocation: [number, number] | null;
   onMapInitialized: (mapInstance: L.Map) => void;
+  routeData?: any;
 }
 
 export const MapComponent: React.FC<MapComponentProps> = ({ 
   aqiData, 
   selectedLocation, 
-  onMapInitialized 
+  onMapInitialized,
+  routeData 
 }) => {
   const mapContainer = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
 
-  // Initialize map on component mount
   useEffect(() => {
     if (!mapContainer.current || mapRef.current) return;
 
     try {
-      // Default view of USA
       mapRef.current = L.map(mapContainer.current, {
         center: [39.8283, -98.5795],
         zoom: 4,
@@ -35,13 +34,10 @@ export const MapComponent: React.FC<MapComponentProps> = ({
         zoomControl: false
       });
 
-      // Add zoom control
       L.control.zoom({ position: 'topright' }).addTo(mapRef.current);
       
-      // Pass the map instance to the parent component
       onMapInitialized(mapRef.current);
       
-      // Force a resize event to ensure the map renders properly
       setTimeout(() => {
         if (mapRef.current) {
           mapRef.current.invalidateSize();
@@ -51,7 +47,6 @@ export const MapComponent: React.FC<MapComponentProps> = ({
       console.error('Error initializing map:', error);
     }
 
-    // Cleanup on unmount
     return () => {
       if (mapRef.current) {
         mapRef.current.remove();
@@ -60,18 +55,15 @@ export const MapComponent: React.FC<MapComponentProps> = ({
     };
   }, [onMapInitialized]);
 
-  // Update map with AQI data
   useEffect(() => {
     if (!mapRef.current || !Array.isArray(aqiData) || aqiData.length === 0) return;
 
-    // Clear existing markers
     mapRef.current.eachLayer((layer) => {
       if (layer instanceof L.CircleMarker) {
         layer.remove();
       }
     });
 
-    // Add AQI data points to the map
     aqiData.forEach((point) => {
       if (point && typeof point.lat === 'number' && typeof point.lon === 'number' && typeof point.aqi === 'number') {
         L.circleMarker([point.lat, point.lon], {
@@ -88,7 +80,6 @@ export const MapComponent: React.FC<MapComponentProps> = ({
     });
   }, [aqiData]);
 
-  // Update map when selected location changes
   useEffect(() => {
     if (!mapRef.current || !selectedLocation) return;
 
@@ -96,18 +87,45 @@ export const MapComponent: React.FC<MapComponentProps> = ({
     
     mapRef.current.setView([lat, lon], 12);
     
-    // Clear existing markers first
     mapRef.current.eachLayer((layer) => {
       if (layer instanceof L.Marker) {
         layer.remove();
       }
     });
     
-    // Add a marker for the selected location
     const marker = L.marker([lat, lon]).addTo(mapRef.current);
     marker.bindPopup(`<b>Selected Location</b>`).openPopup();
     
   }, [selectedLocation]);
+
+  useEffect(() => {
+    if (!mapRef.current || !routeData) return;
+
+    mapRef.current.eachLayer((layer) => {
+      if (layer instanceof L.Polyline) {
+        layer.remove();
+      }
+    });
+
+    if (routeData.coordinates && routeData.aqiValues) {
+      for (let i = 0; i < routeData.coordinates.length - 1; i++) {
+        const segment = [
+          routeData.coordinates[i],
+          routeData.coordinates[i + 1]
+        ];
+        const aqi = routeData.aqiValues[i] || 0;
+        
+        L.polyline(segment.map(coord => [coord[1], coord[0]]), {
+          color: getAQIColor(aqi),
+          weight: 4,
+          opacity: 0.8
+        }).addTo(mapRef.current);
+      }
+
+      const bounds = L.latLngBounds(routeData.coordinates.map((coord: number[]) => [coord[1], coord[0]]));
+      mapRef.current.fitBounds(bounds, { padding: [50, 50] });
+    }
+  }, [routeData]);
 
   return <div ref={mapContainer} className="map-container" />;
 };
