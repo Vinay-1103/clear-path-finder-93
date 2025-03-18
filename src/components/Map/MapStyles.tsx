@@ -15,4 +15,9 @@ export const MapContainer = styled.div`
     border-radius: 12px;
     overflow: hidden;
   }
+
+  .leaflet-container {
+    width: 100%;
+    height: 100%;
+  }
 `;

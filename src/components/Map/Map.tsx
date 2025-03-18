@@ -1,7 +1,7 @@
 
 import React, { useEffect, useRef, useState } from 'react';
-import mapboxgl from 'mapbox-gl';
-import 'mapbox-gl/dist/mapbox-gl.css';
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
 import axios from 'axios';
 import { MapContainer } from './MapStyles';
 import { AirQualityOverlay } from './AirQualityOverlay';
@@ -11,32 +11,28 @@ import { Input } from '@/components/ui/input';
 
 const Map = () => {
   const mapContainer = useRef<HTMLDivElement>(null);
-  const map = useRef<mapboxgl.Map | null>(null);
+  const map = useRef<L.Map | null>(null);
   const [aqiData, setAqiData] = useState<any[]>([]);
-  const [mapboxToken, setMapboxToken] = useState(localStorage.getItem('mapbox_token') || '');
   const [iqairToken, setIqairToken] = useState(localStorage.getItem('iqair_token') || '');
   const [showMap, setShowMap] = useState(false);
 
-  const handleSaveTokens = () => {
-    localStorage.setItem('mapbox_token', mapboxToken);
+  const handleSaveToken = () => {
     localStorage.setItem('iqair_token', iqairToken);
     setShowMap(true);
   };
 
   useEffect(() => {
-    if (!mapContainer.current || !showMap || !mapboxToken) return;
-
-    mapboxgl.accessToken = mapboxToken;
+    if (!mapContainer.current || !showMap) return;
 
     try {
-      map.current = new mapboxgl.Map({
-        container: mapContainer.current,
-        style: 'mapbox://styles/mapbox/light-v11',
-        center: [-74.5, 40],
-        zoom: 9,
-      });
+      map.current = L.map(mapContainer.current).setView([40, -74.5], 9);
 
-      map.current.addControl(new mapboxgl.NavigationControl(), 'top-right');
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+      }).addTo(map.current);
+
+      // Add zoom control
+      L.control.zoom({ position: 'topright' }).addTo(map.current);
 
       // Load AQI data
       const fetchAQIData = async () => {
@@ -58,41 +54,30 @@ const Map = () => {
     return () => {
       map.current?.remove();
     };
-  }, [showMap, mapboxToken, iqairToken]);
+  }, [showMap, iqairToken]);
 
   useEffect(() => {
     if (!map.current || !aqiData.length) return;
 
-    // Add AQI data points to the map
-    map.current.on('load', () => {
-      map.current?.addSource('aqi-data', {
-        type: 'geojson',
-        data: {
-          type: 'FeatureCollection',
-          features: aqiData.map((point) => ({
-            type: 'Feature',
-            geometry: {
-              type: 'Point',
-              coordinates: [point.lon, point.lat],
-            },
-            properties: {
-              aqi: point.aqi,
-              color: getAQIColor(point.aqi),
-            },
-          })),
-        },
-      });
+    // Clear existing markers
+    map.current.eachLayer((layer) => {
+      if (layer instanceof L.CircleMarker) {
+        layer.remove();
+      }
+    });
 
-      map.current?.addLayer({
-        id: 'aqi-points',
-        type: 'circle',
-        source: 'aqi-data',
-        paint: {
-          'circle-radius': 8,
-          'circle-color': ['get', 'color'],
-          'circle-opacity': 0.8,
-        },
-      });
+    // Add AQI data points to the map
+    aqiData.forEach((point) => {
+      L.circleMarker([point.lat, point.lon], {
+        radius: 8,
+        fillColor: getAQIColor(point.aqi),
+        color: '#fff',
+        weight: 1,
+        opacity: 1,
+        fillOpacity: 0.8
+      })
+        .addTo(map.current!)
+        .bindPopup(`AQI: ${point.aqi}`);
     });
   }, [aqiData]);
 
@@ -100,21 +85,6 @@ const Map = () => {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen gap-4 p-4">
         <div className="w-full max-w-md space-y-4">
-          <div className="space-y-2">
-            <label className="text-sm font-medium">Mapbox Token</label>
-            <Input
-              type="text"
-              placeholder="Enter your Mapbox public token"
-              value={mapboxToken}
-              onChange={(e) => setMapboxToken(e.target.value)}
-            />
-            <p className="text-xs text-gray-500">
-              Get your token from{' '}
-              <a href="https://www.mapbox.com/" target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline">
-                Mapbox
-              </a>
-            </p>
-          </div>
           <div className="space-y-2">
             <label className="text-sm font-medium">IQAir Token</label>
             <Input
@@ -130,7 +100,7 @@ const Map = () => {
               </a>
             </p>
           </div>
-          <Button onClick={handleSaveTokens} className="w-full">
+          <Button onClick={handleSaveToken} className="w-full">
             Show Map
           </Button>
         </div>
