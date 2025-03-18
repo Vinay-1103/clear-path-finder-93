@@ -1,5 +1,5 @@
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import axios from 'axios';
@@ -21,6 +21,7 @@ const Map = () => {
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [selectedLocation, setSelectedLocation] = useState<[number, number] | null>(null);
   const [mapInitialized, setMapInitialized] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
 
   const handleSaveToken = () => {
     if (!iqairToken.trim()) {
@@ -76,6 +77,7 @@ const Map = () => {
   };
   
   const fetchAQIDataForLocation = async (lat: number, lon: number) => {
+    setIsLoading(true);
     try {
       // Define a bounding box around the selected location (roughly 20km in each direction)
       const offset = 0.18; // roughly 20km in decimal degrees
@@ -93,10 +95,13 @@ const Map = () => {
       console.error('Error fetching AQI data for location:', error);
       toast.error("Failed to load air quality data");
       setAqiData([]);
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  useEffect(() => {
+  // Memoize the initial map setup to prevent continuous re-renders
+  const initializeMap = useCallback(() => {
     if (!mapContainer.current || !showMap || mapInitialized) return;
 
     try {
@@ -108,7 +113,8 @@ const Map = () => {
           L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
           })
-        ]
+        ],
+        zoomControl: false
       });
 
       // Add zoom control
@@ -116,39 +122,23 @@ const Map = () => {
       
       setMapInitialized(true);
       
-      // Load initial AQI data for USA
-      const fetchAQIData = async () => {
-        try {
-          const response = await axios.get(
-            `https://api.waqi.info/v2/map/bounds?latlng=24.396308,-125.000000,49.384358,-66.934570&token=${iqairToken}`
-          );
-          
-          if (response.data && response.data.data) {
-            setAqiData(response.data.data || []);
-          } else {
-            setAqiData([]);
-            toast.warning("No air quality data available. Please check your API key.");
-          }
-        } catch (error) {
-          console.error('Error fetching AQI data:', error);
-          toast.error("Failed to load air quality data. Please check your API key.");
-          setAqiData([]);
-        }
-      };
-
-      fetchAQIData();
-      
       // Force a resize event to ensure the map renders properly
       setTimeout(() => {
         if (map.current) {
           map.current.invalidateSize();
         }
-      }, 100);
+      }, 500);
     } catch (error) {
       console.error('Error initializing map:', error);
       toast.error("Failed to initialize map");
     }
+  }, [showMap, mapInitialized]);
 
+  // Initialize map on mount
+  useEffect(() => {
+    initializeMap();
+    
+    // Cleanup
     return () => {
       if (map.current) {
         map.current.remove();
@@ -156,8 +146,38 @@ const Map = () => {
         setMapInitialized(false);
       }
     };
-  }, [showMap, iqairToken, mapInitialized]);
+  }, [initializeMap]);
 
+  // Fetch AQI data only once after map is initialized
+  useEffect(() => {
+    if (!map.current || !mapInitialized || !showMap) return;
+    
+    const fetchInitialAQIData = async () => {
+      setIsLoading(true);
+      try {
+        const response = await axios.get(
+          `https://api.waqi.info/v2/map/bounds?latlng=24.396308,-125.000000,49.384358,-66.934570&token=${iqairToken}`
+        );
+        
+        if (response.data && response.data.data) {
+          setAqiData(response.data.data || []);
+        } else {
+          setAqiData([]);
+          toast.warning("No air quality data available. Please check your API key.");
+        }
+      } catch (error) {
+        console.error('Error fetching AQI data:', error);
+        toast.error("Failed to load air quality data. Please check your API key.");
+        setAqiData([]);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchInitialAQIData();
+  }, [mapInitialized, showMap, iqairToken]);
+
+  // Add AQI markers whenever aqiData changes
   useEffect(() => {
     if (!map.current || !Array.isArray(aqiData) || aqiData.length === 0) return;
 
@@ -224,7 +244,7 @@ const Map = () => {
         onSelectLocation={handleSelectLocation} 
       />
       
-      <AirQualityOverlay data={aqiData} />
+      <AirQualityOverlay data={aqiData} isLoading={isLoading} />
     </MapContainer>
   );
 };

@@ -22,6 +22,7 @@ export const MapContainer = styled.div`
   .leaflet-container {
     width: 100% !important;
     height: 100% !important;
+    background-color: #f5f7fa !important;
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen,
       Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
   }
@@ -41,6 +42,7 @@ export const MapContainer = styled.div`
     border-radius: 8px;
     overflow: hidden;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    margin-top: 60px !important;
   }
 
   .leaflet-control-zoom a {
@@ -54,5 +56,11 @@ export const MapContainer = styled.div`
   .leaflet-control-zoom a:hover {
     background-color: #f0f0f0;
     color: #333;
+  }
+  
+  .leaflet-control-attribution {
+    background-color: rgba(255, 255, 255, 0.7) !important;
+    padding: 2px 5px !important;
+    font-size: 10px !important;
   }
 `;
