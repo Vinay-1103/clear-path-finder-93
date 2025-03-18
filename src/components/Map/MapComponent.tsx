@@ -18,6 +18,8 @@ export const MapComponent: React.FC<MapComponentProps> = ({
 }) => {
   const mapContainer = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
+  const markersLayerRef = useRef<L.LayerGroup | null>(null);
+  const routeLayerRef = useRef<L.LayerGroup | null>(null);
 
   useEffect(() => {
     if (!mapContainer.current || mapRef.current) return;
@@ -36,6 +38,9 @@ export const MapComponent: React.FC<MapComponentProps> = ({
 
       L.control.zoom({ position: 'topright' }).addTo(mapRef.current);
       
+      markersLayerRef.current = L.layerGroup().addTo(mapRef.current);
+      routeLayerRef.current = L.layerGroup().addTo(mapRef.current);
+      
       onMapInitialized(mapRef.current);
       
       setTimeout(() => {
@@ -51,31 +56,89 @@ export const MapComponent: React.FC<MapComponentProps> = ({
       if (mapRef.current) {
         mapRef.current.remove();
         mapRef.current = null;
+        markersLayerRef.current = null;
+        routeLayerRef.current = null;
       }
     };
   }, [onMapInitialized]);
 
   useEffect(() => {
-    if (!mapRef.current || !Array.isArray(aqiData) || aqiData.length === 0) return;
+    if (!mapRef.current || !markersLayerRef.current || !Array.isArray(aqiData)) return;
 
-    mapRef.current.eachLayer((layer) => {
-      if (layer instanceof L.CircleMarker) {
-        layer.remove();
-      }
-    });
+    markersLayerRef.current.clearLayers();
 
     aqiData.forEach((point) => {
       if (point && typeof point.lat === 'number' && typeof point.lon === 'number' && typeof point.aqi === 'number') {
-        L.circleMarker([point.lat, point.lon], {
+        const circleMarker = L.circleMarker([point.lat, point.lon], {
           radius: 8,
           fillColor: getAQIColor(point.aqi),
           color: '#fff',
           weight: 1,
           opacity: 1,
           fillOpacity: 0.8
-        })
-          .addTo(mapRef.current!)
-          .bindPopup(`<b>AQI: ${point.aqi}</b><br>${point.station?.name || 'Unknown Station'}`);
+        }).bindPopup(`
+          <div style="text-align: center;">
+            <h3 style="margin: 0; font-weight: bold;">AQI: ${point.aqi}</h3>
+            <div style="font-size: 0.9em; margin-top: 5px;">${point.station?.name || 'Unknown Station'}</div>
+            <div style="margin-top: 5px; padding: 5px; background-color: ${getAQIColor(point.aqi)}; color: white; border-radius: 4px;">
+              ${getAQILabel(point.aqi)}
+            </div>
+          </div>
+        `);
+
+        const pulseIcon = L.divIcon({
+          html: `<div class="pulse-icon" style="background-color: ${getAQIColor(point.aqi)};"></div>`,
+          className: 'pulse-icon-wrapper',
+          iconSize: [20, 20]
+        });
+
+        if (!document.getElementById('pulse-icon-style')) {
+          const style = document.createElement('style');
+          style.id = 'pulse-icon-style';
+          style.innerHTML = `
+            .pulse-icon-wrapper {
+              background-color: transparent;
+            }
+            .pulse-icon {
+              width: 16px;
+              height: 16px;
+              border-radius: 50%;
+              position: relative;
+            }
+            .pulse-icon:before {
+              content: '';
+              position: absolute;
+              width: 200%;
+              height: 200%;
+              left: -50%;
+              top: -50%;
+              background-color: inherit;
+              border-radius: 50%;
+              opacity: 0.6;
+              animation: pulse 2s infinite;
+            }
+            @keyframes pulse {
+              0% {
+                transform: scale(0.5);
+                opacity: 0.6;
+              }
+              50% {
+                opacity: 0.3;
+              }
+              100% {
+                transform: scale(1.2);
+                opacity: 0;
+              }
+            }
+          `;
+          document.head.appendChild(style);
+        }
+
+        circleMarker.addTo(markersLayerRef.current!);
+        
+        if (point.aqi > 100) {
+          L.marker([point.lat, point.lon], { icon: pulseIcon }).addTo(markersLayerRef.current!);
+        }
       }
     });
   }, [aqiData]);
@@ -87,45 +150,76 @@ export const MapComponent: React.FC<MapComponentProps> = ({
     
     mapRef.current.setView([lat, lon], 12);
     
-    mapRef.current.eachLayer((layer) => {
-      if (layer instanceof L.Marker) {
-        layer.remove();
+    const existingMarkers = document.querySelectorAll('.leaflet-marker-icon:not(.pulse-icon-wrapper)');
+    existingMarkers.forEach(marker => {
+      if (marker.parentNode) {
+        marker.parentNode.removeChild(marker);
       }
     });
     
     const marker = L.marker([lat, lon]).addTo(mapRef.current);
-    marker.bindPopup(`<b>Selected Location</b>`).openPopup();
+    marker.bindPopup(`<b>Selected Location</b><br>Analyzing air quality...`).openPopup();
     
   }, [selectedLocation]);
 
   useEffect(() => {
-    if (!mapRef.current || !routeData) return;
+    if (!mapRef.current || !routeLayerRef.current || !routeData) return;
 
-    mapRef.current.eachLayer((layer) => {
-      if (layer instanceof L.Polyline) {
-        layer.remove();
-      }
-    });
+    routeLayerRef.current.clearLayers();
 
     if (routeData.coordinates && routeData.aqiValues) {
-      for (let i = 0; i < routeData.coordinates.length - 1; i++) {
-        const segment = [
-          routeData.coordinates[i],
-          routeData.coordinates[i + 1]
-        ];
-        const aqi = routeData.aqiValues[i] || 0;
+      const routeCoordinates = routeData.coordinates.map((coord: number[]) => [coord[1], coord[0]]);
+      
+      for (let i = 0; i < routeCoordinates.length - 1; i++) {
+        const segmentStart = routeCoordinates[i];
+        const segmentEnd = routeCoordinates[i + 1];
+        const segmentIndex = Math.floor(i * routeData.aqiValues.length / routeCoordinates.length);
+        const aqi = routeData.aqiValues[segmentIndex] || 0;
         
-        L.polyline(segment.map(coord => [coord[1], coord[0]]), {
+        const polyline = L.polyline([segmentStart, segmentEnd], {
           color: getAQIColor(aqi),
-          weight: 4,
-          opacity: 0.8
-        }).addTo(mapRef.current);
+          weight: 5,
+          opacity: 0.8,
+          lineCap: 'round',
+          lineJoin: 'round'
+        }).bindPopup(`Air Quality Index: ${aqi} (${getAQILabel(aqi)})`);
+        
+        polyline.addTo(routeLayerRef.current);
       }
+      
+      const startPoint = routeCoordinates[0];
+      const endPoint = routeCoordinates[routeCoordinates.length - 1];
+      
+      L.marker(startPoint, {
+        icon: createCustomIcon('green', 'A')
+      }).addTo(routeLayerRef.current).bindPopup('Starting Point');
+      
+      L.marker(endPoint, {
+        icon: createCustomIcon('red', 'B')
+      }).addTo(routeLayerRef.current).bindPopup('Destination');
 
-      const bounds = L.latLngBounds(routeData.coordinates.map((coord: number[]) => [coord[1], coord[0]]));
+      const bounds = L.latLngBounds(routeCoordinates);
       mapRef.current.fitBounds(bounds, { padding: [50, 50] });
     }
   }, [routeData]);
+
+  const createCustomIcon = (color: string, letter: string) => {
+    return L.divIcon({
+      className: 'custom-marker-icon',
+      html: `<div style="background-color: ${color}; color: white; border-radius: 50%; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; font-weight: bold; box-shadow: 0 2px 5px rgba(0,0,0,0.3);">${letter}</div>`,
+      iconSize: [24, 24],
+      iconAnchor: [12, 12]
+    });
+  };
+
+  const getAQILabel = (aqi: number): string => {
+    if (aqi <= 50) return 'Good';
+    if (aqi <= 100) return 'Moderate';
+    if (aqi <= 150) return 'Unhealthy for Sensitive Groups';
+    if (aqi <= 200) return 'Unhealthy';
+    if (aqi <= 300) return 'Very Unhealthy';
+    return 'Hazardous';
+  };
 
   return <div ref={mapContainer} className="map-container" />;
 };

@@ -1,3 +1,4 @@
+
 import React, { useState, useCallback, useRef } from 'react';
 import L from 'leaflet';
 import { MapContainer } from './MapStyles';
@@ -17,6 +18,7 @@ const Map = () => {
   const [selectedLocation, setSelectedLocation] = useState<[number, number] | null>(null);
   const [mapInitialized, setMapInitialized] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [isSearching, setIsSearching] = useState(false);
   const [routeData, setRouteData] = useState<any>(null);
   const map = useRef<L.Map | null>(null);
 
@@ -31,8 +33,20 @@ const Map = () => {
   };
 
   const handleSearch = async (query: string) => {
-    const results = await searchLocations(query);
-    setSearchResults(results);
+    if (!query.trim()) {
+      setSearchResults([]);
+      return;
+    }
+    
+    setIsSearching(true);
+    try {
+      const results = await searchLocations(query);
+      setSearchResults(results);
+    } catch (error) {
+      toast.error("Error searching for locations");
+    } finally {
+      setIsSearching(false);
+    }
   };
 
   const handleSelectLocation = async (location: any) => {
@@ -42,13 +56,19 @@ const Map = () => {
     setSearchResults([]);
     
     setIsLoading(true);
-    const data = await fetchAQIDataForLocation(lat, lon, iqairToken);
-    setAqiData(data);
-    setIsLoading(false);
+    try {
+      const data = await fetchAQIDataForLocation(lat, lon, iqairToken);
+      setAqiData(data);
+    } catch (error) {
+      toast.error("Failed to load air quality data");
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleRouteSelect = async (start: { lat: number; lon: number }, end: { lat: number; lon: number }) => {
     try {
+      setIsLoading(true);
       const routeGeometry = await fetchRoute(start, end);
       if (routeGeometry) {
         const coordinates = routeGeometry.coordinates;
@@ -59,6 +79,8 @@ const Map = () => {
     } catch (error) {
       console.error('Error handling route selection:', error);
       toast.error("Error calculating route");
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -69,6 +91,9 @@ const Map = () => {
     setIsLoading(true);
     fetchAQIData(iqairToken, true).then(data => {
       setAqiData(data);
+      setIsLoading(false);
+    }).catch(error => {
+      console.error("Error loading initial AQI data:", error);
       setIsLoading(false);
     });
   }, [iqairToken]);
@@ -90,6 +115,13 @@ const Map = () => {
         selectedLocation={selectedLocation} 
         onMapInitialized={handleMapInitialized}
         routeData={routeData}
+      />
+      
+      <SearchBar 
+        onSearch={handleSearch} 
+        searchResults={searchResults} 
+        onSelectLocation={handleSelectLocation}
+        isLoading={isSearching}
       />
       
       <RouteSearch onRouteSelect={handleRouteSelect} />

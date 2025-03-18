@@ -1,16 +1,23 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { Input } from '@/components/ui/input';
-import { Search, MapPin, X } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Search, MapPin, X, Loader2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 interface SearchBarProps {
   onSearch: (query: string) => void;
   searchResults: any[];
   onSelectLocation: (location: any) => void;
+  isLoading?: boolean;
 }
 
-export const SearchBar: React.FC<SearchBarProps> = ({ onSearch, searchResults, onSelectLocation }) => {
+export const SearchBar: React.FC<SearchBarProps> = ({ 
+  onSearch, 
+  searchResults, 
+  onSelectLocation,
+  isLoading = false 
+}) => {
   const [query, setQuery] = useState('');
   const [isFocused, setIsFocused] = useState(false);
   const searchRef = useRef<HTMLDivElement>(null);
@@ -32,7 +39,18 @@ export const SearchBar: React.FC<SearchBarProps> = ({ onSearch, searchResults, o
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
     setQuery(value);
-    onSearch(value);
+  };
+
+  const handleSearch = () => {
+    if (query.trim()) {
+      onSearch(query);
+    }
+  };
+
+  const handleKeyPress = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter' && query.trim()) {
+      onSearch(query);
+    }
   };
 
   const handleClear = () => {
@@ -46,24 +64,42 @@ export const SearchBar: React.FC<SearchBarProps> = ({ onSearch, searchResults, o
       className="absolute top-4 left-1/2 transform -translate-x-1/2 z-10 w-full max-w-md"
     >
       <div className="relative">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
-          <Input
-            type="text"
-            placeholder="Search for a location..."
-            value={query}
-            onChange={handleInputChange}
-            onFocus={() => setIsFocused(true)}
-            className="pl-9 pr-8 w-full bg-white/90 backdrop-blur-sm border-0 shadow-lg focus:ring-2 focus:ring-indigo-300"
-          />
-          {query && (
-            <button 
-              onClick={handleClear}
-              className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          )}
+        <div className="relative flex items-center">
+          <div className="relative flex-grow">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+            <Input
+              type="text"
+              placeholder="Search for a location..."
+              value={query}
+              onChange={handleInputChange}
+              onKeyPress={handleKeyPress}
+              onFocus={() => setIsFocused(true)}
+              className="pl-9 pr-8 w-full bg-white/90 backdrop-blur-sm border-0 shadow-lg focus:ring-2 focus:ring-indigo-300"
+            />
+            {query && (
+              <button 
+                onClick={handleClear}
+                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            )}
+          </div>
+          
+          <Button 
+            onClick={handleSearch}
+            disabled={isLoading || !query.trim()} 
+            variant="default" 
+            size="sm"
+            className="ml-2 bg-gradient-to-r from-indigo-500 to-purple-600 text-white shadow-md hover:shadow-lg transition-all duration-300"
+          >
+            {isLoading ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Search className="h-4 w-4" />
+            )}
+            <span className="hidden sm:inline">Search</span>
+          </Button>
         </div>
 
         <AnimatePresence>
